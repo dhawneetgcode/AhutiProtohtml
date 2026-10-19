@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AHUTI: CURSE OF AHAD — Director's Cut 3D Engine (Fixed Mouse Lock)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Rozha+One&display=swap');
+
+  * { box-sizing: border-box; user-select: none; margin: 0; padding: 0; }
+  body { overflow: hidden; background: #020101; font-family: 'Cormorant Garamond', Georgia, serif; color: #efe2ce; }
+  #webgl-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 1; cursor: crosshair; }
+
+  #fade-layer { position: fixed; inset: 0; background: #000; z-index: 40; opacity: 0; pointer-events: none; transition: opacity 1.1s ease; }
+  .letterbox { position: fixed; left: 0; width: 100%; height: 0vh; background: #000; z-index: 9; transition: height 0.7s ease; pointer-events: none; }
+  #lb-top { top: 0; }
+  #lb-bot { bottom: 0; }
+  body.cutscene .letterbox { height: 9vh; }
+
+  /* CLICK TO RESUME BANNER (Shows whenever ESC unlocks mouse) */
+  #relock-banner {
+    position: fixed; top: 12%; left: 50%; transform: translateX(-50%);
+    background: rgba(165, 42, 20, 0.95); border: 2px solid #ffbe5c;
+    color: #fff; font-family: 'Cinzel', serif; font-size: 14px; letter-spacing: 2px;
+    padding: 10px 24px; z-index: 25; display: none; cursor: pointer;
+    box-shadow: 0 0 25px rgba(0,0,0,0.9); animation: pulseBorder 1.5s infinite;
+  }
+  @keyframes pulseBorder { 0%, 100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.04); } }
+
+  /* HUD */
+  #hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 24px 28px; }
+  .hud-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+
+  .objective-card {
+    background: linear-gradient(135deg, rgba(16, 10, 6, 0.92) 0%, rgba(8, 4, 2, 0.82) 100%);
+    border: 1px solid rgba(196, 132, 68, 0.45);
+    border-left: 4px solid #e08232;
+    padding: 14px 20px; max-width: 500px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.9), inset 0 0 20px rgba(224,130,50,0.08);
+    backdrop-filter: blur(4px);
+  }
+  .act-header { font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 3px; color: #e89543; text-transform: uppercase; margin-bottom: 5px; }
+  .objective-body { font-size: 16.5px; line-height: 1.45; color: #f5ead8; }
+
+  .right-cluster { display: flex; gap: 14px; align-items: flex-start; pointer-events: auto; }
+  .glb-btn {
+    background: rgba(24, 15, 10, 0.9); border: 1px solid #8a5a36; color: #f0c284;
+    padding: 10px 14px; font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 1.5px;
+    cursor: pointer; transition: 0.2s; text-transform: uppercase;
+  }
+  .glb-btn:hover { background: #4a2812; border-color: #ffaa44; color: #fff; }
+
+  .prahar-card {
+    background: rgba(14, 8, 5, 0.92); border: 1px solid rgba(150, 52, 34, 0.65);
+    padding: 10px 18px; text-align: center; box-shadow: 0 8px 25px rgba(0,0,0,0.9);
+  }
+  .prahar-title { font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 2.5px; color: #b89472; text-transform: uppercase; }
+  .prahar-tally { font-family: monospace; font-size: 27px; font-weight: bold; color: #e63922; letter-spacing: 7px; margin-top: 2px; text-shadow: 0 0 12px rgba(230,57,34,0.85); }
+
+  .stealth-pill {
+    background: rgba(14, 8, 5, 0.9); border: 1px solid #3d6336;
+    padding: 10px 14px; font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 1.5px; color: #98db85;
+  }
+  .stealth-pill.danger { border-color: #9e2a1b; color: #ff6e54; box-shadow: 0 0 15px rgba(230,57,34,0.35); }
+
+  /* CENTER RETICLE */
+  #reticle-center { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 12; pointer-events: none; }
+  #reticle-ring {
+    width: 10px; height: 10px; border: 1.5px solid rgba(255, 228, 185, 0.75); border-radius: 50%;
+    margin: 0 auto; transition: all 0.18s ease; box-shadow: 0 0 8px rgba(0,0,0,0.9);
+  }
+  #reticle-ring.hover { width: 22px; height: 22px; border-color: #ffaa33; background: rgba(255, 170, 51, 0.18); transform: rotate(45deg); border-radius: 2px; }
+  #interact-tag {
+    margin-top: 14px; background: rgba(10, 5, 3, 0.94); border: 1px solid #b57c43;
+    padding: 7px 16px; font-size: 15px; color: #ffe4ad; display: none; white-space: nowrap;
+    box-shadow: 0 4px 18px #000; letter-spacing: 0.5px;
+  }
+
+  /* SUBTITLES & WHISPERS */
+  #whisper-fx {
+    position: fixed; top: 21%; width: 100%; text-align: center;
+    font-family: 'Rozha One', serif; font-size: 38px; color: rgba(235, 35, 20, 0.92);
+    text-shadow: 0 0 28px #ff0000, 0 0 8px #000; letter-spacing: 10px;
+    pointer-events: none; z-index: 15; opacity: 0; transition: opacity 0.6s ease;
+  }
+  #subtitle-bar {
+    position: fixed; bottom: 98px; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(90deg, transparent, rgba(8,4,2,0.92) 15%, rgba(8,4,2,0.92) 85%, transparent);
+    border-top: 1px solid rgba(196,132,68,0.35); border-bottom: 1px solid rgba(196,132,68,0.35);
+    padding: 10px 36px; font-size: 17px; color: #ffe2b0; text-align: center;
+    max-width: 760px; display: none; z-index: 14; text-shadow: 0 1px 3px #000; pointer-events: none;
+  }
+
+  /* BOTTOM INVENTORY */
+  .hud-bottom { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+  .inv-strip { display: flex; gap: 10px; flex-wrap: wrap; }
+  .inv-item {
+    background: rgba(14, 8, 5, 0.9); border: 1px solid #473121;
+    padding: 9px 15px; font-family: 'Cinzel', serif; font-size: 11.5px; letter-spacing: 1px; color: #9c846b;
+  }
+  .inv-item.active { border-color: #eba03f; color: #fff4df; box-shadow: 0 0 15px rgba(235,160,63,0.3); }
+  .controls-card {
+    background: rgba(14, 8, 5, 0.88); border: 1px solid #3b2719;
+    padding: 10px 16px; font-size: 13px; color: #b59e84; line-height: 1.55; text-align: right;
+  }
+  .controls-card b { color: #f2b05e; font-family: 'Cinzel', serif; font-size: 11.5px; }
+
+  /* MODALS */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(2, 1, 0, 0.86);
+    backdrop-filter: blur(6px); z-index: 30; display: none;
+    align-items: center; justify-content: center; pointer-events: auto;
+  }
+  .parchment-sheet {
+    width: 620px; min-height: 410px;
+    background: radial-gradient(circle at center, #ebd3a7 0%, #c79c60 68%, #7d5324 100%);
+    color: #291304; padding: 42px; border-radius: 4px; border: 2px solid #4a2c0f;
+    box-shadow: 0 0 80px #000, inset 0 0 55px rgba(50, 20, 2, 0.75);
+    display: flex; flex-direction: column; justify-content: space-between; text-align: center;
+  }
+  .parchment-head { font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: 3px; color: #4f280a; border-bottom: 1px solid rgba(79,40,10,0.4); padding-bottom: 12px; }
+  .marwari-text { font-family: 'Rozha One', serif; font-size: 25px; color: #6e0f06; line-height: 1.6; margin: 24px 0 16px; text-shadow: 0 0 12px rgba(220, 50, 20, 0.45); }
+  .english-text { font-size: 17px; font-style: italic; color: #301806; line-height: 1.55; }
+  .parchment-foot { font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 1.5px; color: #4f280a; border-top: 1px solid rgba(79,40,10,0.4); padding-top: 12px; }
+
+  .puzzle-box {
+    width: 600px; background: linear-gradient(180deg, #1a0f09 0%, #0d0704 100%);
+    border: 2px solid #9e6b3b; padding: 32px; text-align: center;
+    box-shadow: 0 0 70px #000, inset 0 0 30px rgba(224, 130, 50, 0.12);
+  }
+  .puzzle-box h3 { font-family: 'Cinzel', serif; font-size: 20px; color: #f0a448; letter-spacing: 3px; margin-bottom: 8px; }
+  .puzzle-box p { font-size: 15.5px; color: #ccb69b; margin-bottom: 20px; line-height: 1.5; }
+  .mural-clue-row { display: flex; justify-content: center; gap: 18px; margin-bottom: 24px; }
+  .mural-tile {
+    background: rgba(40, 22, 12, 0.85); border: 1px solid #754c29; padding: 10px 16px;
+    font-family: 'Cinzel', serif; font-size: 12px; color: #ffcf87;
+  }
+  .string-rack { display: flex; justify-content: space-around; align-items: center; height: 150px; background: #080402; border: 1px solid #4a2f18; padding: 16px; margin-bottom: 20px; }
+  .bow-string-btn {
+    height: 100%; width: 115px; background: linear-gradient(180deg, #2b180d, #140b05);
+    border: 1px solid #8c5d32; color: #f7dcb4; cursor: pointer;
+    display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 12px;
+    font-family: 'Cinzel', serif; font-size: 11.5px; transition: 0.15s;
+  }
+  .bow-string-btn:hover { border-color: #ffaa33; box-shadow: 0 0 18px rgba(255,170,51,0.4); transform: translateY(-2px); }
+  .string-wire { width: 3px; height: 55px; background: linear-gradient(180deg, #d4af37, #fff, #d4af37); box-shadow: 0 0 8px #ffaa33; }
+
+  .dial-row { display: flex; flex-direction: column; gap: 14px; margin: 22px 0; }
+  .dial-ring {
+    display: flex; justify-content: space-between; align-items: center;
+    background: #140b06; border: 1px solid #8a5d34; padding: 12px 20px;
+  }
+  .dial-label { font-family: 'Cinzel', serif; font-size: 13px; color: #d4a872; }
+  .dial-value { font-size: 18px; font-weight: bold; color: #ffbe5c; letter-spacing: 2px; }
+  .dial-turn-btn {
+    background: #5c3416; border: 1px solid #c98847; color: #fff;
+    padding: 7px 16px; font-family: 'Cinzel', serif; font-size: 11px; cursor: pointer;
+  }
+  .dial-turn-btn:hover { background: #854b20; }
+
+  #title-screen {
+    position: fixed; inset: 0;
+    background: radial-gradient(circle at 50% 35%, #241109 0%, #080301 70%, #000000 100%);
+    z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 32px;
+  }
+  .title-ornament { color: #c77b36; font-size: 22px; letter-spacing: 12px; margin-bottom: 10px; }
+  #title-screen h1 {
+    font-family: 'Cinzel', serif; font-size: 58px; font-weight: 900; color: #f29f41;
+    letter-spacing: 9px; text-transform: uppercase; margin-bottom: 6px;
+    text-shadow: 0 0 35px rgba(242, 159, 65, 0.6), 0 4px 12px #000;
+  }
+  #title-screen h2 {
+    font-family: 'Cinzel', serif; font-size: 16px; color: #c9684a;
+    letter-spacing: 5px; margin-bottom: 28px; text-transform: uppercase;
+  }
+  #title-screen p { max-width: 720px; font-size: 17.5px; line-height: 1.7; color: #d6c3aa; margin-bottom: 32px; }
+  .btn-group { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .cta-btn {
+    background: linear-gradient(180deg, #9e3219 0%, #631b0b 100%);
+    color: #ffedd4; border: 1px solid #eb7c4b; padding: 15px 34px;
+    font-family: 'Cinzel', serif; font-size: 14px; font-weight: 700; letter-spacing: 2.5px;
+    text-transform: uppercase; cursor: pointer; transition: 0.25s;
+    box-shadow: 0 6px 25px rgba(0,0,0,0.85);
+  }
+  .cta-btn:hover { background: linear-gradient(180deg, #c23e21 0%, #80230f 100%); box-shadow: 0 0 28px rgba(235, 124, 75, 0.75); transform: translateY(-2px); }
+  .cta-btn.alt { background: rgba(28, 17, 11, 0.9); border-color: #825b3a; color: #d9bf9c; }
+</style>
+</head>
+<body>
+
+<canvas id="webgl-canvas"></canvas>
+<div id="fade-layer"></div>
+<div id="lb-top" class="letterbox"></div>
+<div id="lb-bot" class="letterbox"></div>
+<div id="relock-banner">MOUSE UNLOCKED — LEFT-CLICK ANYWHERE TO RESUME CAMERA LOOK</div>
+<div id="whisper-fx">मुक्ति... मुक्ति... मुक्ति...</div>
+<div id="subtitle-bar"></div>
+
+<!-- MAIN HUD -->
+<div id="hud">
+  <div class="hud-top">
+    <div class="objective-card">
+      <div class="act-header" id="hud-act">SCENE I: THE ARRIVAL (19:47)</div>
+      <div class="objective-body" id="hud-quest">You are driving your Mahindra SUV toward Khetipura (Ahad). Inspect the Ancestral Letter in the Glovebox [E].</div>
+    </div>
+
+    <div class="right-cluster">
+      <button class="glb-btn" id="btn-open-glb">[Load ComfyUI .GLB]</button>
+      <div class="stealth-pill" id="hud-stealth">STATE: IN SUV CABIN</div>
+      <div class="prahar-card">
+        <div class="prahar-title">Midnight Prahar</div>
+        <div class="prahar-tally" id="hud-prahar">~</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="reticle-center">
+    <div id="reticle-ring"></div>
+    <div id="interact-tag">[E] Interact</div>
+  </div>
+
+  <div class="hud-bottom">
+    <div class="inv-strip">
+      <div class="inv-item active" id="inv-light">LIGHT: POCKET LIGHTER [F]</div>
+      <div class="inv-item" id="inv-letter">LETTER: IN GLOVEBOX [Q]</div>
+      <div class="inv-item" id="inv-portrait">PORTRAIT: 0 / 4</div>
+      <div class="inv-item" id="inv-heads">CLAY HEADS: 0 / 5</div>
+    </div>
+    <div class="controls-card">
+      <b>WASD</b> Move &nbsp;|&nbsp; <b>SHIFT</b> Sprint &nbsp;|&nbsp; <b>C</b> Crouch (Silent on Thikri Shards)<br>
+      <b>E</b> Interact &nbsp;|&nbsp; <b>F</b> Shutter Lantern &nbsp;|&nbsp; <b>Q</b> Open/Close Marwari Letter
+    </div>
+  </div>
+</div>
+
+<!-- MODAL 1: SENTIENT ANCESTRAL LETTER (Does NOT break mouse lock!) -->
+<div class="modal-backdrop" id="modal-letter">
+  <div class="parchment-sheet">
+    <div class="parchment-head">Sentient Ancestral Letter — Village Ahad (Khetipura)</div>
+    <div>
+      <div class="marwari-text" id="ui-marwari"></div>
+      <div class="english-text" id="ui-english"></div>
+    </div>
+    <div class="parchment-foot">Press <b>[Q]</b>, <b>[E]</b>, or <b>Left-Click</b> to fold parchment and continue</div>
+  </div>
+</div>
+
+<!-- MODAL 2: INTERACTIVE RAVANAHATHA BOWED INSTRUMENT PUZZLE -->
+<div class="modal-backdrop" id="modal-ravanahatha">
+  <div class="puzzle-box">
+    <h3>THE FOLK MUSIC ALTAR — RAVANAHATHA</h3>
+    <p>Press keys <b>[1], [2], [3], [4]</b> (or click) to bow the 3 strings matching the wall frescoes: <b>I (Tree) -> III (Ravanahatha) -> IV (Diya)</b>.</p>
+    <div class="mural-clue-row">
+      <div class="mural-tile">I. KHEJRI TREE [Key 1]</div>
+      <div class="mural-tile">II. RAVANAHATHA [Key 3]</div>
+      <div class="mural-tile">III. SACRED DIYA [Key 4]</div>
+    </div>
+    <div class="string-rack">
+      <button class="bow-string-btn" onclick="bowRavanahathaString(1)">
+        <span>[KEY 1]</span><div class="string-wire" id="wire-1"></div><span>Khejri Tree</span>
+      </button>
+      <button class="bow-string-btn" onclick="bowRavanahathaString(2)">
+        <span>[KEY 2]</span><div class="string-wire" id="wire-2"></div><span>Desert Crow</span>
+      </button>
+      <button class="bow-string-btn" onclick="bowRavanahathaString(3)">
+        <span>[KEY 3]</span><div class="string-wire" id="wire-3"></div><span>Ravanahatha</span>
+      </button>
+      <button class="bow-string-btn" onclick="bowRavanahathaString(4)">
+        <span>[KEY 4]</span><div class="string-wire" id="wire-4"></div><span>Sacred Diya</span>
+      </button>
+    </div>
+    <button class="cta-btn alt" onclick="closeAllModals()">Step Back & Resume [Q / Click]</button>
+  </div>
+</div>
+
+<!-- MODAL 3: INTERACTIVE 3-RING ASTROLOGICAL LOCKBOX PUZZLE -->
+<div class="modal-backdrop" id="modal-lockbox">
+  <div class="puzzle-box">
+    <h3>ANCESTRAL BRASS LOCKBOX</h3>
+    <p>Press keys <b>[1], [2], [3]</b> (or click) to rotate the 3 brass rings to match the Sunken Kalash Mirror Beam: <b>SURYA (Sun) — KALASH (Urn) — AGNI (Fire)</b>.</p>
+    <div class="dial-row">
+      <div class="dial-ring">
+        <span class="dial-label">OUTER RING [KEY 1]</span>
+        <span class="dial-value" id="dial-val-0">CHANDRA (Moon)</span>
+        <button class="dial-turn-btn" onclick="rotateLockboxDial(0)">ROTATE [1]</button>
+      </div>
+      <div class="dial-ring">
+        <span class="dial-label">MIDDLE RING [KEY 2]</span>
+        <span class="dial-value" id="dial-val-1">SARPA (Serpent)</span>
+        <button class="dial-turn-btn" onclick="rotateLockboxDial(1)">ROTATE [2]</button>
+      </div>
+      <div class="dial-ring">
+        <span class="dial-label">INNER RING [KEY 3]</span>
+        <span class="dial-value" id="dial-val-2">VAYU (Wind)</span>
+        <button class="dial-turn-btn" onclick="rotateLockboxDial(2)">ROTATE [3]</button>
+      </div>
+    </div>
+    <button class="cta-btn alt" onclick="closeAllModals()">Close Lockbox & Resume [Q / Click]</button>
+  </div>
+</div>
+
+<!-- MODAL 4: LIVE COMFYUI .GLB HOT-SWAP BRIDGE -->
+<div class="modal-backdrop" id="modal-glb">
+  <div class="puzzle-box">
+    <h3>COMFYUI / BLENDER .GLB HOT-SWAP BRIDGE</h3>
+    <p>Select any `.glb` or `.gltf` file from `D:\Comfy-Desktop\ComfyUI-Shared` to hot-swap it into the running game:</p>
+    <div class="dial-row">
+      <div class="dial-ring">
+        <span class="dial-label">1.1 THE BRAHMARAKSHAS</span>
+        <input type="file" accept=".glb,.gltf" onchange="hotSwapGLB(event, 'monster')" style="color:#ffbe5c; font-size:12px;">
+      </div>
+      <div class="dial-ring">
+        <span class="dial-label">2.1 HURRICANE LANTERN</span>
+        <input type="file" accept=".glb,.gltf" onchange="hotSwapGLB(event, 'lantern')" style="color:#ffbe5c; font-size:12px;">
+      </div>
+      <div class="dial-ring">
+        <span class="dial-label">2.5–2.9 CLAY HEADS</span>
+        <input type="file" accept=".glb,.gltf" onchange="hotSwapGLB(event, 'clayhead')" style="color:#ffbe5c; font-size:12px;">
+      </div>
+    </div>
+    <button class="cta-btn alt" onclick="closeAllModals()">Resume Game</button>
+  </div>
+</div>
+
+<!-- TITLE / EPILOGUE OVERLAY -->
+<div id="title-screen">
+  <div class="title-ornament">✦ आहड़ की आहुति ✦</div>
+  <h1>AHUTI: CURSE OF AHAD</h1>
+  <h2>Director's Cut — First-Person Folk Survival & Puzzle Horror</h2>
+  <p>
+    Featuring <b>Unreal Bloom Post-Processing</b>, custom <b>GLSL Sanity & Chromatic Aberration Shaders</b>, procedural <b>PBR Sandstone & Mandana Folk Art</b>, extruded <b>5-Cusp Mehrab Archways</b>, and seamless <b>Pointer-Lock Recovery</b> (use <b>[Q]</b> for the letter and <b>Left-Click</b> anytime to lock the mouse).
+  </p>
+  <div class="btn-group">
+    <button class="cta-btn" id="btn-play-full">Begin Scene I (Mahindra SUV Arrival)</button>
+    <button class="cta-btn alt" id="btn-play-mandir">Skip to Scene II (Mandir Awakening)</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+<script>
+// ============================================================================
+// 1. PROCEDURAL PBR TEXTURE & MINIATURE PAINTING FACTORY
+// ============================================================================
+const TextureFactory = {
+  createSandstonePBR() {
+    const c = document.createElement('canvas'), b = document.createElement('canvas');
+    c.width = b.width = 512; c.height = b.height = 512;
+    const ctx = c.getContext('2d'), btx = b.getContext('2d');
+    ctx.fillStyle = '#7d5638'; ctx.fillRect(0, 0, 512, 512);
+    btx.fillStyle = '#808080'; btx.fillRect(0, 0, 512, 512);
+
+    const rows = 8, rowH = 512 / rows;
+    for (let r = 0; r < rows; r++) {
+      const y = r * rowH, offset = (r % 2) * 64;
+      for (let x = -64; x < 512; x += 128) {
+        const bx = x + offset, shade = 110 + Math.floor(Math.random() * 35);
+        ctx.fillStyle = `rgb(${shade + 25}, ${shade - 5}, ${shade - 32})`;
+        ctx.fillRect(bx + 3, y + 3, 122, rowH - 6);
+        btx.fillStyle = '#d0d0d0'; btx.fillRect(bx + 4, y + 4, 120, rowH - 8);
+        btx.strokeStyle = '#181818'; btx.lineWidth = 4; btx.strokeRect(bx, y, 128, rowH);
+      }
+    }
+    const map = new THREE.CanvasTexture(c), bumpMap = new THREE.CanvasTexture(b);
+    map.wrapS = map.wrapT = bumpMap.wrapS = bumpMap.wrapT = THREE.RepeatWrapping;
+    map.repeat.set(2, 2); bumpMap.repeat.set(2, 2);
+    return new THREE.MeshStandardMaterial({ map, bumpMap, bumpScale: 0.045, roughness: 0.88 });
+  },
+
+  createMandanaMudPBR() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 512;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#634328'; ctx.fillRect(0, 0, 512, 512);
+    ctx.fillStyle = '#7d2218'; ctx.fillRect(0, 0, 512, 95); ctx.fillRect(0, 420, 512, 92);
+    ctx.strokeStyle = '#f5ead4'; ctx.lineWidth = 3;
+    for (let x = 0; x < 512; x += 64) {
+      ctx.beginPath(); ctx.moveTo(x, 85); ctx.lineTo(x + 32, 12); ctx.lineTo(x + 64, 85); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x + 32, 56, 6, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + 32, 430); ctx.lineTo(x + 58, 465); ctx.lineTo(x + 32, 500); ctx.lineTo(x + 6, 465); ctx.closePath(); ctx.stroke();
+    }
+    const map = new THREE.CanvasTexture(c);
+    return new THREE.MeshStandardMaterial({ map, roughness: 0.94, bumpMap: map, bumpScale: 0.025 });
+  },
+
+  createTeakWoodPBR() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#331c0e'; ctx.fillRect(0, 0, 256, 256);
+    ctx.strokeStyle = '#140903'; ctx.lineWidth = 4;
+    for (let x = 0; x < 256; x += 64) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 256); ctx.stroke(); }
+    const map = new THREE.CanvasTexture(c);
+    return new THREE.MeshStandardMaterial({ map, bumpMap: map, bumpScale: 0.03, roughness: 0.8 });
+  },
+
+  createPortraitQuadrantMaterial(qIndex) {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.save();
+    ctx.translate((qIndex % 2) * -256, Math.floor(qIndex / 2) * -256);
+    const grad = ctx.createRadialGradient(256, 256, 30, 256, 256, 340);
+    grad.addColorStop(0, '#a8381b'); grad.addColorStop(0.6, '#4a1208'); grad.addColorStop(1, '#1a0603');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, 512, 512);
+    ctx.strokeStyle = '#e6af4b'; ctx.lineWidth = 14; ctx.strokeRect(18, 18, 476, 476);
+    ctx.beginPath(); ctx.arc(256, 195, 85, 0, Math.PI * 2); ctx.fillStyle = 'rgba(240, 180, 60, 0.28)'; ctx.fill();
+    ctx.strokeStyle = '#1a0d0a'; ctx.lineWidth = 18;
+    ctx.beginPath(); ctx.moveTo(210, 140); ctx.quadraticCurveTo(110, 60, 140, 25); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(302, 140); ctx.quadraticCurveTo(402, 60, 372, 25); ctx.stroke();
+    ctx.fillStyle = '#8c583a'; ctx.beginPath(); ctx.arc(256, 200, 55, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ff1e00'; ctx.fillRect(252, 162, 8, 26);
+    ctx.beginPath(); ctx.arc(234, 195, 7, 0, Math.PI * 2); ctx.arc(278, 195, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    const tex = new THREE.CanvasTexture(c);
+    return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, emissive: 0x331105, emissiveMap: tex });
+  }
+};
+
+// ============================================================================
+// 2. SOUND ENGINE
+// ============================================================================
+const SoundEngine = {
+  ctx: null, started: false, heartbeatTimer: 0,
+  init() {
+    if (this.started) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.started = true;
+    [73.42, 110.0, 146.83].forEach((freq, i) => {
+      const osc = this.ctx.createOscillator(), filter = this.ctx.createBiquadFilter(), gain = this.ctx.createGain();
+      osc.type = i === 1 ? 'sawtooth' : 'triangle'; osc.frequency.value = freq;
+      filter.type = 'lowpass'; filter.frequency.value = 250; gain.gain.value = 0.022;
+      osc.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination); osc.start();
+    });
+  },
+  playBowedNote(freq, dur = 1.1) {
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator(), filter = this.ctx.createBiquadFilter(), gain = this.ctx.createGain();
+    osc.type = 'sawtooth'; osc.frequency.value = freq;
+    filter.type = 'bandpass'; filter.frequency.value = freq * 2; filter.Q.value = 2.2;
+    const now = this.ctx.currentTime;
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.12);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+    osc.start(now); osc.stop(now + dur);
+  },
+  playHeartbeat(intensity = 0.25) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    [0, 0.18].forEach((offset, idx) => {
+      const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(idx === 0 ? 58 : 48, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(24, now + offset + 0.14);
+      gain.gain.setValueAtTime(intensity, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.15);
+      osc.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(now + offset); osc.stop(now + offset + 0.16);
+    });
+  },
+  playSFX(freq, type = 'sine', dur = 0.4, vol = 0.15) {
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + dur);
+    osc.connect(gain); gain.connect(this.ctx.destination);
+    osc.start(); osc.stop(this.ctx.currentTime + dur);
+  }
+};
+
+// ============================================================================
+// 3. THREE.JS SCENE & POST-PROCESSING
+// ============================================================================
+const canvas = document.getElementById('webgl-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060302);
+scene.fog = new THREE.FogExp2(0x080402, 0.028);
+
+const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 180);
+const player = new THREE.Group();
+player.add(camera);
+scene.add(player);
+
+let composer = null, horrorShaderPass = null;
+const HorrorSanityShader = {
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0.0 }, uFear: { value: 0.0 }, uBloodMoon: { value: 0.0 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uTime; uniform float uFear; uniform float uBloodMoon; varying vec2 vUv;
+    float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
+    void main() {
+      vec2 uv = vUv; vec2 center = uv - 0.5; float dist = length(center);
+      uv += center * dist * (sin(uTime * 6.0) * 0.008 * uFear);
+      float ca = (0.0018 + uFear * 0.012) * dist;
+      vec3 col = vec3(texture2D(tDiffuse, uv + vec2(ca,0.0)).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - vec2(ca,0.0)).b);
+      col += (rand(uv + fract(uTime)) - 0.5) * (0.04 + uFear * 0.05);
+      float vig = smoothstep(0.82, 0.28 - uFear * 0.12, dist);
+      col = mix(mix(vec3(0.0), vec3(0.45, 0.02, 0.01), uFear + uBloodMoon * 0.5), col, vig);
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+};
+try {
+  composer = new THREE.EffectComposer(renderer);
+  composer.addPass(new THREE.RenderPass(scene, camera));
+  composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.85, 0.45, 0.72));
+  horrorShaderPass = new THREE.ShaderPass(HorrorSanityShader);
+  composer.addPass(horrorShaderPass);
+} catch (e) { composer = null; }
+
+// ============================================================================
+// 4. PARAMETRIC ARCHITECTURE & ARTICULATED MONSTER
+// ============================================================================
+const mats = {
+  sandstone: TextureFactory.createSandstonePBR(),
+  mandanaMud: TextureFactory.createMandanaMudPBR(),
+  teakWood: TextureFactory.createTeakWoodPBR(),
+  darkStone: new THREE.MeshStandardMaterial({ color: 0x2b221c, roughness: 0.92 }),
+  brass: new THREE.MeshStandardMaterial({ color: 0xdba33b, metalness: 0.78, roughness: 0.25 }),
+  iron: new THREE.MeshStandardMaterial({ color: 0x262629, metalness: 0.85, roughness: 0.45 }),
+  clay: new THREE.MeshStandardMaterial({ color: 0xa84824, roughness: 0.85 }),
+  emberGlow: new THREE.MeshBasicMaterial({ color: 0xff5500 }),
+  crimsonGlow: new THREE.MeshBasicMaterial({ color: 0xff0a00 })
+};
+
+function createMehrabArchWall() {
+  const shape = new THREE.Shape();
+  shape.moveTo(-2.0, 0); shape.lineTo(-2.0, 3.5); shape.lineTo(2.0, 3.5); shape.lineTo(2.0, 0);
+  shape.lineTo(1.15, 0); shape.lineTo(1.15, 1.85);
+  for (let i = 0; i < 5; i++) {
+    const t2 = ((i + 0.5) / 5) * Math.PI, t3 = ((i + 1) / 5) * Math.PI;
+    shape.quadraticCurveTo(Math.cos(t2) * 0.96, 1.85 + Math.sin(t2) * 1.15, Math.cos(t3) * 1.15, 1.85 + Math.sin(t3) * 1.05);
+  }
+  shape.lineTo(-1.15, 0); shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.32, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.025, bevelSegments: 2 });
+  geo.translate(0, 0, -0.16);
+  return new THREE.Mesh(geo, mats.sandstone);
+}
+
+function createCarvedMandirPillar() {
+  const pts = [
+    new THREE.Vector2(0,0), new THREE.Vector2(0.48,0), new THREE.Vector2(0.48,0.35), new THREE.Vector2(0.32,0.65),
+    new THREE.Vector2(0.28,2.65), new THREE.Vector2(0.42,2.85), new THREE.Vector2(0.54,3.35), new THREE.Vector2(0.54,3.55), new THREE.Vector2(0,3.55)
+  ];
+  return new THREE.Mesh(new THREE.LatheGeometry(pts, 8), mats.sandstone);
+}
+
+function createBailgaadiCart() {
+  const cart = new THREE.Group();
+  const bed = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.18, 1.5), mats.teakWood);
+  bed.position.y = 0.72; cart.add(bed);
+  [-0.82, 0.82].forEach(zOff => {
+    const wheel = new THREE.Group();
+    wheel.add(new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.055, 8, 20), mats.teakWood));
+    for (let s = 0; s < 6; s++) {
+      const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.22, 6), mats.teakWood);
+      spoke.rotation.z = (s / 6) * Math.PI; wheel.add(spoke);
+    }
+    wheel.position.set(-0.2, 0.65, zOff); cart.add(wheel);
+  });
+  return cart;
+}
+
+function createArticulatedBrahmarakshas() {
+  const root = new THREE.Group();
+  const fleshMat = new THREE.MeshStandardMaterial({ color: 0x1c110f, roughness: 0.75 });
+  const boneMat = new THREE.MeshStandardMaterial({ color: 0xc2b299, roughness: 0.6 });
+  const spine = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 1.35, 8), fleshMat);
+  spine.position.y = 1.4; root.add(spine);
+  for (let i = 0; i < 6; i++) {
+    const rib = new THREE.Mesh(new THREE.TorusGeometry(0.24 - i * 0.012, 0.022, 6, 12, Math.PI * 1.45), boneMat);
+    rib.rotation.x = Math.PI / 2 + 0.15; rib.position.set(0, 1.25 + i * 0.11, 0.05); root.add(rib);
+  }
+  const headGroup = new THREE.Group(); headGroup.position.set(0, 2.12, 0.08);
+  headGroup.add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.24, 1), fleshMat));
+  [-0.085, 0.085].forEach(ex => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.038, 8, 8), mats.crimsonGlow);
+    eye.position.set(ex, 0.04, 0.21); headGroup.add(eye);
+  });
+  [-1, 1].forEach(side => {
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(side * 0.12, 0.16, 0), new THREE.Vector3(side * 0.38, 0.36, -0.08),
+      new THREE.Vector3(side * 0.48, 0.62, 0.12), new THREE.Vector3(side * 0.28, 0.82, 0.25)
+    ]);
+    headGroup.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 10, 0.045, 6, false), boneMat));
+  });
+  root.add(headGroup);
+  const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.06, 0.95, 7), fleshMat); leftLeg.position.set(-0.16, 0.48, 0);
+  const rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.06, 0.95, 7), fleshMat); rightLeg.position.set(0.16, 0.48, 0);
+  const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.05, 1.05, 7), fleshMat); leftArm.position.set(-0.36, 1.45, 0.15);
+  const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.05, 1.05, 7), fleshMat); rightArm.position.set(0.36, 1.45, 0.15);
+  root.add(leftLeg, rightLeg, leftArm, rightArm);
+  root.userData.limbs = { leftLeg, rightLeg, leftArm, rightArm, headGroup };
+  const auraLight = new THREE.PointLight(0xff1100, 2.2, 11); auraLight.position.set(0, 2.0, 0.4); root.add(auraLight);
+  return root;
+}
+
+// ============================================================================
+// 5. VIEWMODEL & WORLD SETUP
+// ============================================================================
+const viewmodel = new THREE.Group(); camera.add(viewmodel);
+const skinMat = new THREE.MeshStandardMaterial({ color: 0xb57852, roughness: 0.78 });
+const leftForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.42, 8), skinMat);
+leftForearm.rotation.x = Math.PI / 2; leftForearm.position.set(-0.32, -0.28, -0.42); viewmodel.add(leftForearm);
+
+const rightForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.42, 8), skinMat);
+rightForearm.rotation.x = Math.PI / 2; rightForearm.position.set(0.32, -0.30, -0.40);
+const mauliBands = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.012, 8, 18), new THREE.MeshBasicMaterial({ color: 0xd91818 }));
+mauliBands.rotation.x = Math.PI / 2; mauliBands.position.set(0, 0.12, 0); rightForearm.add(mauliBands); viewmodel.add(rightForearm);
+
+const lighterPivot = new THREE.Group(); lighterPivot.position.set(-0.32, -0.19, -0.62);
+const lighterCase = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.085, 0.028), mats.brass);
+const lighterFlameMesh = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.055, 8), mats.emberGlow); lighterFlameMesh.position.y = 0.07;
+lighterPivot.add(lighterCase, lighterFlameMesh); viewmodel.add(lighterPivot);
+
+const lanternPivot = new THREE.Group(); lanternPivot.position.set(-0.33, -0.22, -0.66); lanternPivot.visible = false;
+const lTank = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.095, 0.07, 12), mats.iron); lTank.position.y = -0.11;
+const lCap = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.06, 12), mats.iron); lCap.position.y = 0.12;
+const lGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.17, 12), new THREE.MeshStandardMaterial({ color: 0xffddaa, transparent: true, opacity: 0.45 }));
+const lCoreFlame = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.07, 8), mats.emberGlow);
+const lShutterSleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.068, 0.16, 12), mats.iron); lShutterSleeve.visible = false;
+lanternPivot.add(lTank, lCap, lGlass, lCoreFlame, lShutterSleeve); viewmodel.add(lanternPivot);
+
+const playerLight = new THREE.PointLight(0xff9933, 1.5, 8.0, 2);
+playerLight.position.set(-0.3, -0.1, -0.65); camera.add(playerLight);
+
+const interactables = [], stealthZones = [], thikriShards = [];
+function addInteract(mesh, text, callback) {
+  mesh.userData = { interactable: true, label: text, onInteract: callback };
+  interactables.push(mesh);
+}
+
+scene.add(new THREE.AmbientLight(0x241829, 0.36));
+const moonLight = new THREE.DirectionalLight(0x6e85a6, 0.5); moonLight.position.set(-30, 50, 25); scene.add(moonLight);
+
+const desertFloor = new THREE.Mesh(new THREE.PlaneGeometry(240, 240), new THREE.MeshStandardMaterial({ color: 0x3d2a1a, roughness: 0.98 }));
+desertFloor.rotation.x = -Math.PI / 2; scene.add(desertFloor);
+
+// SUV Scene I
+const suvRoot = new THREE.Group(); suvRoot.position.set(0, 0, 72); scene.add(suvRoot);
+const suvBody = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.15, 4.6), mats.iron); suvBody.position.y = 0.75;
+const suvDash = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.45, 0.6), mats.darkStone); suvDash.position.set(0, 1.18, -0.85);
+const gloveboxMesh = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.28, 0.08), mats.teakWood); gloveboxMesh.position.set(-0.48, 1.12, -0.54);
+const suvExitDoor = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.5, 0.95), mats.teakWood); suvExitDoor.position.set(1.12, 1.2, 0);
+suvRoot.add(suvBody, suvDash, gloveboxMesh, suvExitDoor);
+
+// Mandir Scene II
+const mandirRoot = new THREE.Group(); mandirRoot.position.set(0, 0, 28); scene.add(mandirRoot);
+const mandirPlinth = new THREE.Mesh(new THREE.BoxGeometry(10.5, 0.65, 10.5), mats.sandstone); mandirPlinth.position.y = 0.325; mandirRoot.add(mandirPlinth);
+[[-4.2, -4.2], [4.2, -4.2], [-4.2, 4.2], [4.2, 4.2]].forEach(([px, pz]) => {
+  const col = createCarvedMandirPillar(); col.position.set(px, 0.65, pz); mandirRoot.add(col);
+});
+const mandirDome = new THREE.Mesh(new THREE.ConeGeometry(7.4, 3.8, 4), mats.sandstone); mandirDome.position.y = 6.1; mandirDome.rotation.y = Math.PI / 4; mandirRoot.add(mandirDome);
+
+const ghantiBell = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.48, 12), mats.brass); ghantiBell.position.set(0, 3.3, 25.0); scene.add(ghantiBell);
+const mandirLetter = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.03, 0.34), new THREE.MeshBasicMaterial({ color: 0xf5deb3 }));
+mandirLetter.position.set(0.55, 0.68, 26.5); scene.add(mandirLetter);
+
+// Village Houses & Carts
+function spawnMudHouse(x, z, rotY) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(6.4, 3.5, 5.2), mats.mandanaMud); body.position.y = 1.75;
+  const kivaadDoor = new THREE.Mesh(new THREE.BoxGeometry(1.35, 2.25, 0.18), mats.teakWood); kivaadDoor.position.set(0, 1.12, 2.62);
+  g.add(body, kivaadDoor); g.position.set(x, 0, z); g.rotation.y = rotY; scene.add(g);
+  addInteract(kivaadDoor, "[E] Knock on Bolted Kivaad Door", () => {
+    SoundEngine.playSFX(105, 'square', 0.25, 0.25);
+    showSubtitle("Villager: 'The iron Kundi is bolted! Flee North to your Great-Grandfather's Haveli!'");
+  });
+}
+spawnMudHouse(-13.5, 15, Math.PI / 2); spawnMudHouse(13.5, 15, -Math.PI / 2);
+spawnMudHouse(-13.5, -3, Math.PI / 2); spawnMudHouse(13.5, -3, -Math.PI / 2);
+
+[[-5.5, 16], [5.5, 12], [-6.0, -5], [6.0, -7]].forEach(([cx, cz]) => {
+  const cart = createBailgaadiCart(); cart.position.set(cx, 0, cz);
+  const poleLamp = new THREE.PointLight(0xffa83b, 0.65, 6.0); poleLamp.position.set(0, 2.3, 0); cart.add(poleLamp);
+  scene.add(cart); stealthZones.push({ x: cx, z: cz, r: 3.2 });
+});
+
+[[0, 14], [-2.5, -9], [2.2, -22]].forEach(([tx, tz]) => {
+  const g = new THREE.Group();
+  for (let i = 0; i < 6; i++) {
+    const shard = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.07, 5), mats.clay);
+    shard.position.set((Math.random() - 0.5) * 1.2, 0.04, (Math.random() - 0.5) * 1.2); g.add(shard);
+  }
+  g.position.set(tx, 0, tz); scene.add(g); thikriShards.push({ x: tx, z: tz, r: 1.35 });
+});
+
+// Havan Kund
+const havanGroup = new THREE.Group(); havanGroup.position.set(0, 0, 5); scene.add(havanGroup);
+const hTier1 = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.35, 3.8), mats.sandstone); hTier1.position.y = 0.175;
+const hTier2 = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.45, 2.9), mats.darkStone); hTier2.position.y = 0.55;
+const hFireLight = new THREE.PointLight(0xff4800, 1.8, 15); hFireLight.position.set(0, 1.6, 0);
+const hFlameCone = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.0, 8), mats.emberGlow); hFlameCone.position.y = 1.05;
+havanGroup.add(hTier1, hTier2, hFireLight, hFlameCone);
+
+const havanHeadSockets = [];
+[[-1.0, -1.1], [-0.5, -1.1], [0, -1.1], [0.5, -1.1], [1.0, -1.1]].forEach(([sx, sz]) => {
+  const headSlot = new THREE.Mesh(new THREE.IcosahedronGeometry(0.24, 1), mats.clay);
+  headSlot.position.set(sx, 0.98, sz); headSlot.visible = false; havanGroup.add(headSlot); havanHeadSockets.push(headSlot);
+});
+
+// Abandoned Haveli
+const entranceArch = createMehrabArchWall(); entranceArch.position.set(0, 0, -18); scene.add(entranceArch);
+const hFrontWingL = new THREE.Mesh(new THREE.BoxGeometry(13, 4.5, 0.4), mats.sandstone); hFrontWingL.position.set(-8.5, 2.25, -18);
+const hFrontWingR = new THREE.Mesh(new THREE.BoxGeometry(13, 4.5, 0.4), mats.sandstone); hFrontWingR.position.set(8.5, 2.25, -18);
+const hBackWall = new THREE.Mesh(new THREE.BoxGeometry(30, 4.5, 0.4), mats.sandstone); hBackWall.position.set(0, 2.25, -38);
+const hLeftWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 4.5, 20), mats.sandstone); hLeftWall.position.set(-15, 2.25, -28);
+const hRightWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 4.5, 20), mats.sandstone); hRightWall.position.set(15, 2.25, -28);
+const hCeiling = new THREE.Mesh(new THREE.BoxGeometry(30, 0.4, 20), mats.darkStone); hCeiling.position.set(0, 4.5, -28);
+scene.add(hFrontWingL, hFrontWingR, hBackWall, hLeftWall, hRightWall, hCeiling);
+
+const baintBeam = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.24, 0.24), mats.teakWood); baintBeam.position.set(1.6, 1.3, -18.3); scene.add(baintBeam);
+const sandookChest = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.85, 0.9), mats.teakWood); sandookChest.position.set(-3.6, 0.425, -20.8); scene.add(sandookChest);
+const portraitFrame = new THREE.Mesh(new THREE.BoxGeometry(2.7, 2.7, 0.14), mats.brass); portraitFrame.position.set(0, 2.3, -37.6); scene.add(portraitFrame);
+
+const portraitQuadrants = [];
+[[-0.6, 0.6], [0.6, 0.6], [-0.6, -0.6], [0.6, -0.6]].forEach(([qx, qy], idx) => {
+  const qMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.16, 1.16), TextureFactory.createPortraitQuadrantMaterial(idx));
+  qMesh.position.set(qx, 2.3 + qy, -37.51); qMesh.visible = false; scene.add(qMesh); portraitQuadrants.push(qMesh);
+});
+
+const piece1Mesh = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.06, 0.65), mats.brass); piece1Mesh.position.set(0, 0.05, -36.2); scene.add(piece1Mesh);
+const ravanahathaStand = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.25, 1.25, 10), mats.teakWood); ravanahathaStand.position.set(13.2, 0.9, -24.5); scene.add(ravanahathaStand);
+const sinkingAltar = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 2.35, 0.85, 4), mats.sandstone); sinkingAltar.position.set(10.2, 0.425, -29.5); scene.add(sinkingAltar);
+const bookshelfMesh = new THREE.Mesh(new THREE.BoxGeometry(1.0, 3.9, 5.5), mats.teakWood); bookshelfMesh.position.set(-14.2, 1.95, -28.5); scene.add(bookshelfMesh);
+const mirrorStand = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.55, 0.12), mats.brass); mirrorStand.position.set(-9.2, 1.1, -33.0); scene.add(mirrorStand);
+const mirrorBeamSpot = new THREE.SpotLight(0xffdd77, 0.0, 12, Math.PI / 9); mirrorBeamSpot.position.set(-9.2, 1.4, -33.0); scene.add(mirrorBeamSpot);
+const lockboxMesh = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.65, 0.75), mats.brass); lockboxMesh.position.set(-9.2, 0.35, -36.4); scene.add(lockboxMesh);
+
+let monster = createArticulatedBrahmarakshas(); monster.position.set(-20, 0, 8); scene.add(monster);
+
+// ============================================================================
+// 6. GAME LOGIC & FIXED POINTER LOCK HANDLERS
+// ============================================================================
+const S = {
+  started: false, act: 1, prahar: 1, praharSymbols: ['~', '~ =', '~ = ≡', '~ = ≡ |'],
+  inSUV: true, suvOverheated: false, hasLetter: false, hasLantern: false, lightOn: true,
+  crouching: false, inCover: false, insideHaveli: false, haveliBarred: false,
+  activeModalId: null,
+  piece1: false, bowSequence: [], diya4Unlocked: false, diyasLit: 0, piece2: false,
+  bookSeq: [], piece3: false, mirrorAligned: false, dialState: [0, 0, 0], piece4: false,
+  piecesCollected: 0, piecesPlaced: 0, headsCollected: 0, headsPlaced: 0, noiseAlertTimer: 0
+};
+
+const CLUES = {
+  glovebox: {
+    m: "पता: गांव आहड़ (खेतीपुरा), तहसील देसूरी, राजस्थान।",
+    e: "Address: Village Ahad (Khetipura), Rajasthan. (The ancestral letter is blank inside... for now.)"
+  },
+  haveli: {
+    m: "म्हारा पूर्वज इण गांव में हजारो वरसां सूं रहता हता। 'आहड़' नांम सूं प्रसिद्ध हतौ म्हारौ गांव। इण गांव री सैंंग सूं मोटी हवेली म्हारी हती।",
+    e: "My ancestors lived in this village for a thousand years. Famous by the name 'Ahad', the grandest Haveli to the North was mine. Bar its gate and open the wooden Sandook chest for the Hurricane Lantern."
+  },
+  puzzles: {
+    m: "१. रावणहत्था रा तार बजाओ: खेजड़ी (1) -> रावणहत्था (3) -> दीपक (4)।\n२. तांत्रिक पोथियां क्रम सूं खेंचो: विद्या, अहंकार, तंत्र, श्राप।\n३. दर्पण घुमाओ अर तिजोरी रा चक्र मिलाओ: सूर्य — कलश — अग्नि।",
+    e: "1. East Altar: Bow Ravanahatha Strings 1 -> 3 -> 4, then light the 4 corner Diyas.\n2. West Library: Pull the 4 Tantric Books in order (1 -> 2 -> 3 -> 4).\n3. NW Study: Align the Mirror Beam, then set the Lockbox Rings to SURYA — KALASH — AGNI."
+  },
+  ritual: {
+    m: "अहंकार म्हांसू पाप करायो अर म्हे ब्रह्मराक्षस बण गयो! मुक्ति वास्ते गांव रा पांचों कोनां सूं माटी रा पांच सिर (हिरण, बकरी, नंदी, ऊंट, मनुष्य) लाय ने हवन कुंड में आहुति दे!",
+    e: "Pride cursed me into a Brahmarakshas! Gather the 5 Clay Heads (Deer, Goat, Bull, Camel, Human) across the 5 village sectors and offer them at the central Havan Kund!"
+  }
+};
+
+function showSubtitle(txt, ms = 4200) {
+  const el = document.getElementById('subtitle-bar');
+  el.textContent = txt; el.style.display = 'block';
+  clearTimeout(el._t); el._t = setTimeout(() => { el.style.display = 'none'; }, ms);
+}
+
+function triggerWhisper(txt = "मुक्ति... मुक्ति... मुक्ति...") {
+  const el = document.getElementById('whisper-fx');
+  el.textContent = txt; el.style.opacity = '1';
+  SoundEngine.playBowedNote(98, 1.8);
+  setTimeout(() => { el.style.opacity = '0'; }, 2400);
+}
+
+function setHUD(actTxt, questTxt) {
+  document.getElementById('hud-act').textContent = actTxt;
+  document.getElementById('hud-quest').textContent = questTxt;
+}
+
+// Keep mouse locked for Letter & Puzzles unless GLB file picker is opened
+function openModal(id, unlockCursor = false) {
+  S.activeModalId = id;
+  document.getElementById(id).style.display = 'flex';
+  if (unlockCursor && document.pointerLockElement === canvas) {
+    document.exitPointerLock();
+  }
+}
+
+function closeAllModals() {
+  S.activeModalId = null;
+  document.querySelectorAll('.modal-backdrop').forEach(m => m.style.display = 'none');
+  if (S.started && document.pointerLockElement !== canvas) {
+    try { canvas.requestPointerLock(); } catch (err) {}
+  }
+}
+
+function openLetterModal(stageKey) {
+  const c = CLUES[stageKey];
+  document.getElementById('ui-marwari').innerText = c.m;
+  document.getElementById('ui-english').innerText = c.e;
+  openModal('modal-letter', false);
+}
+
+// Global Click Handler: Clicking anywhere on the screen closes modals & re-locks mouse!
+document.addEventListener('mousedown', (e) => {
+  if (!S.started) return;
+  const insideInteractiveBox = e.target.closest('.puzzle-box') || e.target.closest('.glb-btn');
+  if (insideInteractiveBox) return;
+
+  if (S.activeModalId) {
+    closeAllModals();
+  }
+  if (document.pointerLockElement !== canvas) {
+    try { canvas.requestPointerLock(); } catch (err) {}
+  }
+});
+
+document.addEventListener('pointerlockchange', () => {
+  const banner = document.getElementById('relock-banner');
+  if (S.started && document.pointerLockElement !== canvas && S.activeModalId !== 'modal-glb') {
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+  }
+});
+
+// Interactables Setup
+addInteract(gloveboxMesh, "[E] Inspect Ancestral Letter in SUV Glovebox", () => {
+  SoundEngine.playSFX(260, 'triangle', 0.3, 0.2);
+  openLetterModal('glovebox');
+  if (!S.suvOverheated) {
+    S.suvOverheated = true;
+    setTimeout(() => {
+      SoundEngine.playHeartbeat(0.5);
+      showSubtitle("THUD! Radio signal cuts to static as the SUV radiator overheats! Exit the SUV Door [E].");
+      setHUD("SCENE I: SUPERNATURAL BORDER", "Your SUV radiator overheated in the desert sand! Close the letter [Q] and interact with the right SUV Door [E] to step outside.");
+    }, 1500);
+  }
+});
+
+addInteract(suvExitDoor, "[E] Step Out of Overheated Mahindra SUV", () => {
+  if (!S.suvOverheated) {
+    showSubtitle("Check the Ancestral Letter inside the Glovebox [E] first.");
+    return;
+  }
+  S.inSUV = false;
+  player.position.set(2.4, 1.7, 70);
+  document.body.classList.add('cutscene');
+  showSubtitle("The desert heat blurs your vision... You collapse in the sand before the Mandir...", 3800);
+  setTimeout(() => {
+    const fade = document.getElementById('fade-layer');
+    fade.style.opacity = '1';
+    setTimeout(() => {
+      document.body.classList.remove('cutscene');
+      beginScene2Mandir();
+      fade.style.opacity = '0';
+    }, 1100);
+  }, 2600);
+});
+
+addInteract(ghantiBell, "[E] Ring Mandir Brass Bell (Ghanti)", () => {
+  SoundEngine.playSFX(960, 'sine', 1.8, 0.3);
+  S.noiseAlertTimer = 5.0;
+  showSubtitle("CLANG! The temple bell resonates across Ahad—the Brahmarakshas heard that!");
+});
+
+addInteract(mandirLetter, "[E] Pick Up Sentient Ancestral Letter", () => {
+  S.hasLetter = true;
+  mandirLetter.visible = false;
+  document.getElementById('inv-letter').textContent = "LETTER: SENTIENT INK [Q]";
+  document.getElementById('inv-letter').classList.add('active');
+  SoundEngine.playSFX(540, 'sine', 0.5, 0.2);
+  openLetterModal(S.hasLantern ? 'puzzles' : 'haveli');
+  if (!S.hasLantern) {
+    setHUD("SCENE II: THE CHASE", "Sprint North through the village to the Abandoned Haveli (Z = -18) and slide the wooden Baint barricade beam!");
+  } else {
+    S.act = 4;
+    setHUD("SCENE IV: SECRETS OF THE HAVELI", "Return inside the Haveli and solve the 3 Puzzles to assemble the 4-Quadrant Portrait Frame!");
+  }
+});
+
+addInteract(baintBeam, "[E] Slide Wooden Barricade Beam (Baint) Across Haveli Gate", () => {
+  S.haveliBarred = !S.haveliBarred;
+  baintBeam.position.x = S.haveliBarred ? 0.0 : 1.6;
+  SoundEngine.playSFX(135, 'square', 0.4, 0.3);
+  if (S.haveliBarred && S.act <= 2) {
+    S.act = 3; triggerWhisper();
+    setHUD("SCENE III: DARKNESS IN THE HAVELI", "Checkpoint 1! Haveli gate barred. Open the Wooden Sandook Chest nearby to equip the Hurricane Lantern.");
+  } else {
+    showSubtitle(S.haveliBarred ? "Haveli Gate Barred (Safe inside)." : "Haveli Gate Unbarred.");
+  }
+});
+
+addInteract(sandookChest, "[E] Open Wooden Sandook Chest (Equip Hurricane Lantern)", () => {
+  if (!S.hasLantern) {
+    S.hasLantern = true;
+    lighterPivot.visible = false; lanternPivot.visible = true;
+    playerLight.distance = 24.0; playerLight.intensity = 2.5;
+    document.getElementById('inv-light').textContent = "LIGHT: HURRICANE LANTERN [F]";
+    SoundEngine.playSFX(680, 'sine', 0.6, 0.25);
+    if (!S.hasLetter) {
+      setHUD("SCENE III: STEALTH RETURN", "You left the Letter at the Mandir! Unbar the gate, crouch [C] & shutter your lantern [F] behind Bullock Carts to retrieve it!");
+    } else {
+      S.act = 4; openLetterModal('puzzles');
+      setHUD("SCENE IV: SECRETS OF THE HAVELI", "Solve the 3 Haveli Puzzles (East Ravanahatha Altar, West Library, NW Mirror Lockbox) to complete the 2x2 Portrait!");
+    }
+  }
+});
+
+addInteract(piece1Mesh, "[E] Pick Up Portrait Quadrant #1 (Base of Frame)", () => {
+  if (!S.piece1) {
+    S.piece1 = true; piece1Mesh.visible = false;
+    awardPortraitPiece("Quadrant #1 (Main Hall Discovery)");
+  }
+});
+
+addInteract(ravanahathaStand, "[E] Inspect & Bow Ravanahatha Folk Instrument", () => {
+  openModal('modal-ravanahatha', false);
+});
+
+window.bowRavanahathaString = function(strNum) {
+  const freqs = { 1: 246.94, 2: 277.18, 3: 329.63, 4: 440.0 };
+  SoundEngine.playBowedNote(freqs[strNum], 1.1);
+  const wire = document.getElementById(`wire-${strNum}`);
+  if (wire) { wire.style.transform = 'scaleX(2.5)'; setTimeout(() => wire.style.transform = 'scaleX(1)', 250); }
+  if (S.diya4Unlocked) return;
+  S.bowSequence.push(strNum);
+  const target = [1, 3, 4];
+  for (let i = 0; i < S.bowSequence.length; i++) {
+    if (S.bowSequence[i] !== target[i]) {
+      S.bowSequence = [];
+      showSubtitle("Discordant note! Press keys [1] -> [3] -> [4] (Tree -> Ravanahatha -> Diya).");
+      return;
+    }
+  }
+  if (S.bowSequence.length === 3) {
+    S.diya4Unlocked = true;
+    closeAllModals();
+    showSubtitle("Harmony achieved! The secret drawer opens revealing the 4th Diya! Now light the 4 Corner Diyas on the Stepped Altar.");
+  }
+};
+
+[[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3]].forEach(([dx, dz], idx) => {
+  const diya = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.14, 10), mats.clay);
+  diya.position.set(10.2 + dx, 0.92, -29.5 + dz); diya.rotation.x = Math.PI;
+  const dLight = new THREE.PointLight(0xff8800, 0, 5.5); dLight.position.set(0, -0.25, 0); diya.add(dLight);
+  scene.add(diya);
+  let lit = false;
+  addInteract(diya, `[E] Light Corner Earthen Diya #${idx + 1}`, () => {
+    if (!S.diya4Unlocked) { showSubtitle("Play the Ravanahatha nearby first (Keys 1 -> 3 -> 4) to unlock the 4th Diya!"); return; }
+    if (!lit) {
+      lit = true; dLight.intensity = 1.6; S.diyasLit++;
+      sinkingAltar.position.y -= 0.15;
+      SoundEngine.playSFX(400 + S.diyasLit * 75, 'sine', 0.4, 0.2);
+      if (S.diyasLit === 4 && !S.piece2) { S.piece2 = true; awardPortraitPiece("Quadrant #2 (4-Diya Sinking Altar)"); }
+      else { showSubtitle(`Lit Corner Diya (${S.diyasLit}/4). The stone platform grinds downward...`); }
+    }
+  });
+});
+
+const booksData = [
+  { id: 1, title: "Granth I: Vidya (Knowledge)", z: -26.6, col: 0x2c5e7a },
+  { id: 2, title: "Granth II: Ahankar (Pride)", z: -27.8, col: 0x8a6829 },
+  { id: 3, title: "Granth III: Tantra (Black Magic)", z: -29.0, col: 0x7a1c1c },
+  { id: 4, title: "Granth IV: Shraap (The Curse)", z: -30.2, col: 0x4b2869 }
+];
+const bookObjs = [];
+booksData.forEach(b => {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.56, 0.24), new THREE.MeshStandardMaterial({ color: b.col, roughness: 0.6 }));
+  mesh.position.set(-13.55, 1.65, b.z); scene.add(mesh); bookObjs.push(mesh);
+  addInteract(mesh, `[E] Pull ${b.title}`, () => {
+    if (S.piece3) return;
+    S.bookSeq.push(b.id); mesh.position.x = -13.2;
+    SoundEngine.playSFX(300 + b.id * 55, 'triangle', 0.35, 0.2);
+    if (!S.bookSeq.every((v, i) => v === i + 1)) {
+      S.bookSeq = []; SoundEngine.playSFX(110, 'sawtooth', 0.4, 0.25);
+      showSubtitle("Wrong order! Pull in order: Vidya -> Ahankar -> Tantra -> Shraap.");
+      setTimeout(() => bookObjs.forEach(m => m.position.x = -13.55), 380);
+    } else if (S.bookSeq.length === 4) { S.piece3 = true; awardPortraitPiece("Quadrant #3 (Tantric Library)"); }
+  });
+});
+
+addInteract(mirrorStand, "[E] Rotate Ornate Brass Mirror Stand", () => {
+  mirrorStand.rotation.y += Math.PI / 2;
+  S.mirrorAligned = !S.mirrorAligned;
+  mirrorBeamSpot.intensity = S.mirrorAligned ? 3.2 : 0.0;
+  SoundEngine.playSFX(520, 'sine', 0.4, 0.2);
+  showSubtitle(S.mirrorAligned ? "Lantern beam reflects onto the Kalash Altar: SURYA — KALASH — AGNI!" : "Mirror rotated away.");
+});
+
+addInteract(lockboxMesh, "[E] Inspect 3-Ring Ancestral Lockbox", () => {
+  openModal('modal-lockbox', false);
+});
+
+const DIAL_OPTIONS = [
+  ["CHANDRA (Moon)", "NAAG (Cobra)", "SURYA (Sun)", "KAAL (Time)"],
+  ["SARPA (Serpent)", "KALASH (Urn)", "PADMA (Lotus)", "CHAKRA (Wheel)"],
+  ["VAYU (Wind)", "JAL (Water)", "PRITHVI (Earth)", "AGNI (Fire)"]
+];
+window.rotateLockboxDial = function(ringIdx) {
+  if (S.piece4) return;
+  S.dialState[ringIdx] = (S.dialState[ringIdx] + 1) % 4;
+  document.getElementById(`dial-val-${ringIdx}`).textContent = DIAL_OPTIONS[ringIdx][S.dialState[ringIdx]];
+  SoundEngine.playSFX(460 + ringIdx * 80, 'triangle', 0.2, 0.2);
+  if (S.dialState[0] === 2 && S.dialState[1] === 1 && S.dialState[2] === 3) {
+    S.piece4 = true; closeAllModals();
+    awardPortraitPiece("Quadrant #4 (Ancestral Brass Lockbox)");
+  }
+};
+
+function awardPortraitPiece(label) {
+  S.piecesCollected++;
+  document.getElementById('inv-portrait').textContent = `PORTRAIT: ${S.piecesCollected} / 4`;
+  document.getElementById('inv-portrait').classList.add('active');
+  SoundEngine.playBowedNote(523.25, 0.9);
+  showSubtitle(`Obtained ${label}! (${S.piecesCollected}/4).`);
+}
+
+addInteract(portraitFrame, "[E] Place Collected Quadrants into 2x2 Ancestral Portrait", () => {
+  if (S.piecesCollected === 0) { showSubtitle("Collect Quadrant #1 at the base and solve the 3 Haveli puzzles first!"); return; }
+  while (S.piecesPlaced < S.piecesCollected) { portraitQuadrants[S.piecesPlaced].visible = true; S.piecesPlaced++; }
+  SoundEngine.playBowedNote(440, 1.0);
+  if (S.piecesPlaced === 4 && S.act < 5) {
+    S.act = 5; triggerWhisper("पञ्च-कपाल आहुति दे!");
+    spawnVillageClayHeads(); openLetterModal('ritual');
+    setHUD("SCENE V: THE PANCH-KAPAL RITUAL", "Checkpoint 3! Collect the 5 Clay Heads across the village sectors and place them on the Central Havan Kund!");
+  }
+});
+
+const clayHeadMeshes = [];
+function spawnVillageClayHeads() {
+  [
+    { name: "Clay Head #1: Deer (Hiran)", x: -10, z: 14 },
+    { name: "Clay Head #2: Goat (Bakri)", x: 10, z: 14 },
+    { name: "Clay Head #3: Bull (Nandi)", x: -10, z: -4 },
+    { name: "Clay Head #4: Camel (Oont)", x: 10, z: -4 },
+    { name: "Clay Head #5: Human (Manushya)", x: 0, z: 22 }
+  ].forEach(s => {
+    const g = new THREE.Group();
+    const headMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(0.38, 1), mats.clay);
+    const pt = new THREE.PointLight(0xff5522, 1.5, 6.5); pt.position.y = 0.5;
+    g.add(headMesh, pt); g.position.set(s.x, 0.55, s.z); scene.add(g); clayHeadMeshes.push(headMesh);
+    addInteract(headMesh, `[E] Collect ${s.name}`, () => {
+      g.visible = false; S.headsCollected++;
+      document.getElementById('inv-heads').textContent = `CLAY HEADS: ${S.headsCollected} / 5`;
+      document.getElementById('inv-heads').classList.add('active');
+      SoundEngine.playBowedNote(392 + S.headsCollected * 55, 0.8);
+      showSubtitle(`Collected ${s.name} (${S.headsCollected}/5)! Offer it at the Central Havan Kund!`);
+    });
+  });
+}
+
+addInteract(hTier2, "[E] Place Clay Heads on Havan Kund Altar (Panch-Kapal Ahuti)", () => {
+  if (S.headsCollected === 0) { showSubtitle("Complete the 2x2 Portrait inside the Haveli first!"); return; }
+  while (S.headsPlaced < S.headsCollected) { havanHeadSockets[S.headsPlaced].visible = true; S.headsPlaced++; }
+  hFireLight.intensity = 1.8 + S.headsPlaced * 1.2; hFlameCone.scale.setScalar(1 + S.headsPlaced * 0.45);
+  SoundEngine.playBowedNote(587.33, 1.3);
+  if (S.headsPlaced === 5) triggerFinalMokshaEnding();
+  else showSubtitle(`Placed ${S.headsPlaced}/5 Clay Heads on the Havan Kund rim!`);
+});
+
+document.getElementById('btn-open-glb').addEventListener('click', (e) => {
+  e.stopPropagation();
+  openModal('modal-glb', true);
+});
+
+window.hotSwapGLB = function(event, targetType) {
+  const file = event.target.files[0]; if (!file) return;
+  const loader = new THREE.GLTFLoader();
+  loader.load(URL.createObjectURL(file), (gltf) => {
+    const model = gltf.scene;
+    const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    if (targetType === 'monster') { model.scale.setScalar(2.2 / maxDim); monster.clear(); monster.add(model); }
+    else if (targetType === 'lantern') { model.scale.setScalar(0.28 / maxDim); lanternPivot.clear(); lanternPivot.add(model); }
+    closeAllModals();
+  });
+};
+
+function beginScene1SUV() {
+  S.act = 1; S.inSUV = true; player.position.set(0.35, 1.48, 72.1); yaw = 0; pitch = 0;
+  setHUD("SCENE I: THE ARRIVAL (19:47)", "You are driving your Mahindra SUV on the desert road to Khetipura. Press [E] on the Glovebox to inspect the Ancestral Letter.");
+}
+
+function beginScene2Mandir() {
+  S.act = 2; S.inSUV = false; player.position.set(0, 1.7, 29.2); yaw = 0; pitch = 0;
+  triggerWhisper("ब्रह्मराक्षस जाग गयो!");
+  showSubtitle("Priest: 'Your arrival awakened the Brahmarakshas! Take your letter and sprint North to the Abandoned Haveli!'", 5000);
+  setHUD("SCENE II: THE AWAKENING & CHASE", "Grab the Ancestral Letter on the Mandir floor and sprint North to the Abandoned Haveli (Z = -18)!");
+}
+
+function onPlayerCaught() {
+  triggerWhisper(); SoundEngine.playHeartbeat(0.7);
+  if (S.prahar >= 4) {
+    S.started = false; document.exitPointerLock();
+    const ts = document.getElementById('title-screen'); ts.style.display = 'flex';
+    ts.innerHTML = `<h1 style="color:#e6321f">CONSUMED AT MIDNIGHT</h1><h2>All 4 Prahar Attempts Expired</h2><div class="btn-group"><button class="cta-btn" onclick="location.reload()">Try Again</button></div>`;
+    return;
+  }
+  S.prahar++;
+  document.getElementById('hud-prahar').textContent = S.praharSymbols[S.prahar - 1];
+  if (S.prahar === 4 && horrorShaderPass) horrorShaderPass.uniforms.uBloodMoon.value = 1.0;
+  player.position.set(0, S.crouching ? 1.0 : 1.7, S.act >= 3 ? -21 : 29);
+  monster.position.set(-22, 0, 8);
+  showSubtitle(`Caught by the Brahmarakshas! Midnight Prahar advanced to Phase ${S.prahar}/4 (${S.praharSymbols[S.prahar - 1]}).`);
+}
+
+function triggerFinalMokshaEnding() {
+  S.started = false; document.exitPointerLock();
+  const ts = document.getElementById('title-screen'); ts.style.display = 'flex';
+  ts.innerHTML = `<h1 style="color:#ffbe55">AHUTI COMPLETE — MOKSHA</h1><h2>The Curse of Ahad is Lifted</h2><p>The Brahmarakshas dissolves into golden ash as the 5th Clay Head completes the Panch-Kapal ritual.</p><div class="btn-group"><button class="cta-btn" onclick="location.reload()">Play Again</button></div>`;
+}
+
+const keys = {};
+let yaw = 0, pitch = 0, swayX = 0, swayY = 0;
+
+document.getElementById('btn-play-full').addEventListener('click', (e) => {
+  e.stopPropagation(); SoundEngine.init();
+  document.getElementById('title-screen').style.display = 'none';
+  canvas.requestPointerLock(); S.started = true; beginScene1SUV();
+});
+
+document.getElementById('btn-play-mandir').addEventListener('click', (e) => {
+  e.stopPropagation(); SoundEngine.init();
+  document.getElementById('title-screen').style.display = 'none';
+  canvas.requestPointerLock(); S.started = true; beginScene2Mandir();
+});
+
+document.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+
+  // Allow closing modals with Q, E, or Escape
+  if (S.activeModalId) {
+    if (S.activeModalId === 'modal-ravanahatha' && ['1','2','3','4'].includes(k)) {
+      bowRavanahathaString(parseInt(k));
+      return;
+    }
+    if (S.activeModalId === 'modal-lockbox' && ['1','2','3'].includes(k)) {
+      rotateLockboxDial(parseInt(k) - 1);
+      return;
+    }
+    if (k === 'q' || k === 'e' || k === 'escape') {
+      closeAllModals();
+      return;
+    }
+    return;
+  }
+
+  if (k === 'q' && S.hasLetter) {
+    openLetterModal(S.act >= 5 ? 'ritual' : (S.hasLantern ? 'puzzles' : 'haveli'));
+  }
+  if (k === 'f' && !S.inSUV) {
+    S.lightOn = !S.lightOn;
+    playerLight.visible = S.lightOn; lShutterSleeve.visible = !S.lightOn;
+    const name = S.hasLantern ? "HURRICANE LANTERN" : "POCKET LIGHTER";
+    document.getElementById('inv-light').textContent = `LIGHT: ${name} (${S.lightOn ? 'ON' : 'SHUTTERED'}) [F]`;
+    SoundEngine.playSFX(320, 'triangle', 0.12, 0.15);
+  }
+  if (k === 'c' && !S.inSUV) {
+    S.crouching = !S.crouching;
+    player.position.y = S.crouching ? 1.0 : 1.7;
+  }
+  if (k === 'e' && hoveredTarget) {
+    hoveredTarget.userData.onInteract();
+  }
+});
+
+document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+document.addEventListener('mousemove', (e) => {
+  if (document.pointerLockElement !== canvas || S.activeModalId) return;
+  yaw -= e.movementX * 0.0022;
+  pitch = Math.max(-Math.PI / 2.4, Math.min(Math.PI / 2.4, pitch - e.movementY * 0.0022));
+  player.rotation.y = yaw; camera.rotation.x = pitch;
+  swayX = -e.movementX * 0.0012; swayY = -e.movementY * 0.0012;
+});
+
+// ============================================================================
+// 7. RENDER & AI LOOP
+// ============================================================================
+const raycaster = new THREE.Raycaster();
+let hoveredTarget = null;
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.1), elapsed = clock.elapsedTime;
+
+  if (S.started && !S.activeModalId) {
+    if (!S.inSUV) {
+      const speed = S.crouching ? 3.1 : (keys['shift'] ? 7.6 : 5.1);
+      const fwd = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+      const rgt = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+      const move = new THREE.Vector3();
+      if (keys['w']) move.add(fwd); if (keys['s']) move.sub(fwd);
+      if (keys['d']) move.add(rgt); if (keys['a']) move.sub(rgt);
+      if (move.lengthSq() > 0) {
+        move.normalize().multiplyScalar(speed * dt);
+        player.position.add(move);
+        viewmodel.position.y = Math.sin(elapsed * 10) * 0.022;
+        viewmodel.position.x = Math.cos(elapsed * 5) * 0.015;
+      }
+      player.position.x = Math.max(-36, Math.min(36, player.position.x));
+      player.position.z = Math.max(-36.8, Math.min(75, player.position.z));
+    }
+
+    viewmodel.rotation.z = THREE.MathUtils.lerp(viewmodel.rotation.z, swayX, dt * 8);
+    viewmodel.rotation.x = THREE.MathUtils.lerp(viewmodel.rotation.x, swayY, dt * 8);
+    swayX *= 0.85; swayY *= 0.85;
+
+    if (S.lightOn) {
+      playerLight.intensity = !S.hasLantern
+        ? (Math.sin(elapsed * 2.1) > 0.92 ? 0.08 : 1.25 + Math.sin(elapsed * 28) * 0.45)
+        : 2.4 + Math.sin(elapsed * 7) * 0.18;
+    }
+
+    if (!S.crouching && !S.inSUV) {
+      for (const t of thikriShards) {
+        if (Math.hypot(player.position.x - t.x, player.position.z - t.z) < t.r) {
+          if (S.noiseAlertTimer <= 0) {
+            SoundEngine.playSFX(180, 'sawtooth', 0.25, 0.3);
+            showSubtitle("CRUNCH! You stepped on Thikri clay shards without crouching [C]!");
+          }
+          S.noiseAlertTimer = 4.5;
+        }
+      }
+    }
+    if (S.noiseAlertTimer > 0) S.noiseAlertTimer -= dt;
+
+    S.insideHaveli = (player.position.z < -18.2 && Math.abs(player.position.x) < 15);
+    S.inCover = stealthZones.some(z => Math.hypot(player.position.x - z.x, player.position.z - z.z) < z.r && (S.crouching || !S.lightOn));
+
+    const stEl = document.getElementById('hud-stealth');
+    if (S.inSUV) { stEl.textContent = "STATE: IN SUV CABIN"; stEl.className = "stealth-pill"; }
+    else if (S.insideHaveli && S.haveliBarred) { stEl.textContent = "SAFE: HAVELI BARRED"; stEl.className = "stealth-pill"; }
+    else if (S.inCover) { stEl.textContent = "HIDDEN: IN BAILGAADI COVER"; stEl.className = "stealth-pill"; }
+    else { stEl.textContent = S.lightOn ? "EXPOSED: LANTERN BLAZING" : "CAUTION: OPEN LANE"; stEl.className = "stealth-pill danger"; }
+
+    if (S.act >= 2) {
+      const mSpeed = 2.6 + S.prahar * 0.65 + (S.act === 5 ? 0.9 : 0);
+      const hidden = (S.insideHaveli && S.haveliBarred) || S.inCover;
+      const dist = Math.hypot(player.position.x - monster.position.x, player.position.z - monster.position.z);
+      const detectRange = S.noiseAlertTimer > 0 ? 45 : (S.lightOn ? 27 : (S.crouching ? 8.5 : 15.5));
+
+      let tx = Math.sin(elapsed * 0.36) * 15, tz = Math.cos(elapsed * 0.26) * 14;
+      if (!hidden && dist < detectRange) { tx = player.position.x; tz = player.position.z; }
+      if (!hidden && dist < 1.7) onPlayerCaught();
+
+      const dx = tx - monster.position.x, dz = tz - monster.position.z, len = Math.hypot(dx, dz);
+      if (len > 0.1) {
+        monster.position.x += (dx / len) * mSpeed * dt;
+        monster.position.z += (dz / len) * mSpeed * dt;
+        if (S.haveliBarred && monster.position.z < -17.1) monster.position.z = -17.1;
+        monster.rotation.y = Math.atan2(dx, dz);
+      }
+
+      if (monster.userData.limbs) {
+        const L = monster.userData.limbs;
+        L.leftLeg.rotation.x = Math.sin(elapsed * mSpeed * 3.2) * 0.55;
+        L.rightLeg.rotation.x = -Math.sin(elapsed * mSpeed * 3.2) * 0.55;
+        L.leftArm.rotation.x = -0.5 + Math.cos(elapsed * mSpeed * 3.2) * 0.35;
+        L.rightArm.rotation.x = -0.5 - Math.cos(elapsed * mSpeed * 3.2) * 0.35;
+      }
+
+      const fearLevel = hidden ? 0.0 : THREE.MathUtils.clamp(1.0 - (dist / 20.0), 0.0, 1.0);
+      if (horrorShaderPass) {
+        horrorShaderPass.uniforms.uTime.value = elapsed;
+        horrorShaderPass.uniforms.uFear.value = fearLevel;
+      }
+      if (fearLevel > 0.35) {
+        SoundEngine.heartbeatTimer -= dt;
+        if (SoundEngine.heartbeatTimer <= 0) {
+          SoundEngine.playHeartbeat(fearLevel * 0.45);
+          SoundEngine.heartbeatTimer = Math.max(0.32, 1.0 - fearLevel * 0.65);
+        }
+      }
+    }
+
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const hits = raycaster.intersectObjects(interactables, true);
+    const tag = document.getElementById('interact-tag'), ring = document.getElementById('reticle-ring');
+    if (hits.length > 0 && hits[0].distance < 4.6) {
+      let o = hits[0].object;
+      while (o && !o.userData.interactable) o = o.parent;
+      if (o && o.userData.interactable) {
+        hoveredTarget = o; tag.style.display = 'block'; tag.textContent = o.userData.label; ring.classList.add('hover');
+      }
+    } else {
+      hoveredTarget = null; tag.style.display = 'none'; ring.classList.remove('hover');
+    }
+  }
+
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  if (composer) composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
